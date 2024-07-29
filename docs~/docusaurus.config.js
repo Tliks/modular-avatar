@@ -28,6 +28,8 @@ const config = {
     defaultLocale: 'en',
     locales: ['en','ja'],
   },
+  
+  onBrokenAnchors: 'warn',
 
   presets: [
     [
