@@ -12,6 +12,7 @@ namespace nadena.dev.modular_avatar.core
     public sealed class ModularAvatarMMDLayerControl : StateMachineBehaviour
     {
         [SerializeField] internal bool m_DisableInMMDMode;
+        [SerializeField, HideInInspector] internal bool m_AutomaticallyAdded;
 
         [PublicAPI]
         public bool DisableInMMDMode

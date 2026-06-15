@@ -20,11 +20,6 @@ using Object = UnityEngine.Object;
 
 namespace nadena.dev.modular_avatar.animation
 {
-    internal class MMDRelayState
-    {
-        internal HashSet<ModularAvatarMMDLayerControl> AutomaticallyAddedControls = new();
-    }
-
 #if MA_VRCSDK3_AVATARS
     [RunsOnPlatforms(WellKnownPlatforms.VRChatAvatar30)]
     internal class MMDRelayEarlyPass : Pass<MMDRelayEarlyPass>
@@ -36,9 +31,6 @@ namespace nadena.dev.modular_avatar.animation
             var cc = context.Extension<VirtualControllerContext>();
             if (cc.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
             {
-                var automaticallyAddedControls =
-                    context.GetState<MMDRelayState>().AutomaticallyAddedControls;
-
                 foreach (var (layer, index) in fx.Layers.Take(3).Select((layer, index) => (layer, index)))
                 {
                     if (layer.StateMachine == null ||
@@ -49,8 +41,8 @@ namespace nadena.dev.modular_avatar.animation
 
                     var layerControl = ScriptableObject.CreateInstance<ModularAvatarMMDLayerControl>();
                     layerControl.DisableInMMDMode = index != 0;
+                    layerControl.m_AutomaticallyAdded = true;
                     layer.StateMachine.Behaviours = layer.StateMachine.Behaviours.Add(layerControl);
-                    automaticallyAddedControls.Add(layerControl);
                 }
             }
         }
@@ -87,7 +79,6 @@ namespace nadena.dev.modular_avatar.animation
             if (!cc.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
                 return;
 
-            var automaticallyAddedControls = context.GetState<MMDRelayState>().AutomaticallyAddedControls;
             var layersWithMmdControl = new Dictionary<VirtualLayer, (int Index, bool DisableInMmdMode, bool AutomaticallyAdded)>();
 
             foreach (var (layer, index) in fx.Layers.Select((layer, index) => (layer, index)))
@@ -112,7 +103,7 @@ namespace nadena.dev.modular_avatar.animation
                 layersWithMmdControl.Add(layer, (
                     index,
                     control.DisableInMMDMode,
-                    automaticallyAddedControls.Contains(control)
+                    control.m_AutomaticallyAdded
                 ));
 
                 layer.StateMachine.Behaviours = layer.StateMachine.Behaviours
