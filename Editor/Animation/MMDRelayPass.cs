@@ -155,20 +155,16 @@ namespace nadena.dev.modular_avatar.animation
             var currentLayers = fx.Layers.ToList();
             var newLayers = new List<VirtualLayer>();
 
-            var originalLayerZero = layersWithMmdControl
-                .FirstOrDefault(pair =>
-                    pair.Value.Index == 0 &&
-                    !pair.Value.DisableInMmdMode &&
-                    pair.Value.AutomaticallyAdded)
-                .Key;
-
-            if (originalLayerZero != null)
+            var currentLayerZero = currentLayers[0];
+            var isOriginalCurrentLayerZero = layersWithMmdControl.TryGetValue(currentLayerZero, out var info)
+                && !info.DisableInMmdMode && info.AutomaticallyAdded;
+            if (isOriginalCurrentLayerZero)
             {
                 // Keep the original layer 0 as layer 0 since it should be affected by MMD shenanigans.
                 // Note that we don't do this with an explicit opt-in, as it appears that layer 0 still behaves a bit
                 // special compared to others, so if you opt-in you should get totally normal behavior.
-                newLayers.Add(originalLayerZero);
-                currentLayers.Remove(originalLayerZero);
+                newLayers.Add(currentLayerZero);
+                currentLayers.Remove(currentLayerZero);
             }
             else
             {
