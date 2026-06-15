@@ -137,8 +137,8 @@ namespace nadena.dev.modular_avatar.animation
             }
 
             // Check for WD OFF states in non-MMD layers when MMD Layer Control is being used
-            CheckForWriteDefaultsOn(fx, layersWithMmdControl.Values.Any(v =>
-                v.DisableInMmdMode && !v.AutomaticallyAdded));
+            var hasAnyOptInMmdLayerControl = layersWithMmdControl.Values.Any(v => v.DisableInMmdMode && !v.AutomaticallyAdded);
+            CheckForWriteDefaultsOn(fx, hasAnyOptInMmdLayerControl);
 
             var needsAdjustment = layersWithMmdControl.Count != 3 ||
                                   layersWithMmdControl.Values.Any(v =>
@@ -169,7 +169,6 @@ namespace nadena.dev.modular_avatar.animation
                 // special compared to others, so if you opt-in you should get totally normal behavior.
                 newLayers.Add(originalLayerZero);
                 currentLayers.Remove(originalLayerZero);
-                layersWithMmdControl.Remove(originalLayerZero);
             }
             else
             {
