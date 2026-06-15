@@ -1,4 +1,4 @@
-﻿#nullable enable
+﻿﻿#nullable enable
 
 #if MA_VRCSDK3_AVATARS
 using VRC.SDK3.Avatars.Components;
@@ -20,13 +20,22 @@ using Object = UnityEngine.Object;
 
 namespace nadena.dev.modular_avatar.animation
 {
+    internal class MMDRelayState
+    {
+        internal bool Enabled = false;
+    }
+
 #if MA_VRCSDK3_AVATARS
     [RunsOnPlatforms(WellKnownPlatforms.VRChatAvatar30)]
     internal class MMDRelayEarlyPass : Pass<MMDRelayEarlyPass>
     {
         protected override void Execute(BuildContext context)
         {
-            if (!MMDRelayPass.ShouldRun(context)) return;
+            var settings = context.AvatarRootObject.GetComponentsInChildren<ModularAvatarVRChatSettings>(true);
+            var enabled = settings.FirstOrDefault()?.MMDWorldSupport ?? true;
+            context.GetState<MMDRelayState>().Enabled = enabled;
+
+            if (!enabled) return;
             
             var cc = context.Extension<VirtualControllerContext>();
             if (cc.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
@@ -64,17 +73,11 @@ namespace nadena.dev.modular_avatar.animation
         internal const string StateNameInitial = "Initial";
         internal const string StateNameNotMMD = "NotMMD";
         internal const string StateNameMMD = "MMD";
-
-        internal static bool ShouldRun(BuildContext context)
-        {
-            var settings = context.AvatarRootObject.GetComponentsInChildren<ModularAvatarVRChatSettings>(true);
-            return settings.FirstOrDefault()?.MMDWorldSupport ?? true;
-        }
         
         protected override void Execute(BuildContext context)
         {
-            if (!ShouldRun(context)) return;
-            
+            if (!context.GetState<MMDRelayState>().Enabled) return;
+
             var cc = context.Extension<VirtualControllerContext>();
             if (!cc.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
                 return;
