@@ -43,6 +43,12 @@ namespace nadena.dev.modular_avatar.core.editor.plugin
 
         protected override void Configure()
         {
+#if MA_VRCSDK3_AVATARS
+            InPhase(BuildPhase.PlatformInit)
+                .WithRequiredExtension(typeof(VirtualControllerContext),
+                    s => s.Run(MMDRelayEarlyPass.Instance));
+#endif
+
             Sequence seq = InPhase(BuildPhase.Resolving);
             seq.Run(PlatformFilterPass.Instance);
             seq.Run(ResolveObjectReferences.Instance);
@@ -74,7 +80,6 @@ namespace nadena.dev.modular_avatar.core.editor.plugin
                 {
 #if MA_VRCSDK3_AVATARS
                     seq.Run(FixupAbsolutePlayAudioPass.Instance);
-                    seq.Run(MMDRelayEarlyPass.Instance);
                     seq.Run(RenameParametersPluginPass.Instance);
                     seq.Run(ParameterAssignerPass.Instance);
                     seq.Run(RemoveLayerPass.Instance);
@@ -129,10 +134,6 @@ namespace nadena.dev.modular_avatar.core.editor.plugin
                         ctx => { ctx.Extension<AnimatorServicesContext>().RemoveEmptyLayers(); });
                     seq.Run("Harmonize animator parameter types",
                         ctx => { ctx.Extension<AnimatorServicesContext>().HarmonizeParameterTypes(); });
-
-#if MA_VRCSDK3_AVATARS
-                    seq.Run(MMDRelayPass.Instance);
-#endif
                 });
 #if MA_VRCSDK3_AVATARS
                 seq.Run(PhysbonesBlockerPluginPass.Instance);
@@ -156,6 +157,13 @@ namespace nadena.dev.modular_avatar.core.editor.plugin
             InPhase(BuildPhase.Optimizing)
                 .WithRequiredExtension(typeof(ModularAvatarContext),
                     s => s.Run(GCGameObjectsPluginPass.Instance));
+
+#if MA_VRCSDK3_AVATARS
+            InPhase(BuildPhase.PlatformFinish)
+                .WithRequiredExtension(typeof(VirtualControllerContext),
+                    s => s.Run(MMDRelayPass.Instance));
+#endif
+
         }
     }
 

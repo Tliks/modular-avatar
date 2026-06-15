@@ -22,7 +22,7 @@ namespace nadena.dev.modular_avatar.animation
 {
     internal class MMDRelayState
     {
-        internal HashSet<VirtualLayer> mmdAffectedOriginalLayers = new();
+        internal HashSet<ModularAvatarMMDLayerControl> AutomaticallyAddedControls = new();
     }
 
 #if MA_VRCSDK3_AVATARS
@@ -33,12 +33,25 @@ namespace nadena.dev.modular_avatar.animation
         {
             if (!MMDRelayPass.ShouldRun(context)) return;
             
-            var asc = context.Extension<AnimatorServicesContext>();
-            if (asc.ControllerContext.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
+            var cc = context.Extension<VirtualControllerContext>();
+            if (cc.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
             {
-                context.GetState<MMDRelayState>().mmdAffectedOriginalLayers = new HashSet<VirtualLayer>(
-                    fx.Layers.Take(3)
-                );
+                var automaticallyAddedControls =
+                    context.GetState<MMDRelayState>().AutomaticallyAddedControls;
+
+                foreach (var (layer, index) in fx.Layers.Take(3).Select((layer, index) => (layer, index)))
+                {
+                    if (layer.StateMachine == null ||
+                        layer.StateMachine.Behaviours.Any(b => b is ModularAvatarMMDLayerControl))
+                    {
+                        continue;
+                    }
+
+                    var layerControl = ScriptableObject.CreateInstance<ModularAvatarMMDLayerControl>();
+                    layerControl.DisableInMMDMode = index != 0;
+                    layer.StateMachine.Behaviours = layer.StateMachine.Behaviours.Add(layerControl);
+                    automaticallyAddedControls.Add(layerControl);
+                }
             }
         }
     }
@@ -70,15 +83,14 @@ namespace nadena.dev.modular_avatar.animation
         {
             if (!ShouldRun(context)) return;
             
-            var asc = context.Extension<AnimatorServicesContext>();
-            if (!asc.ControllerContext.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
+            var cc = context.Extension<VirtualControllerContext>();
+            if (!cc.Controllers.TryGetValue(VRCAvatarDescriptor.AnimLayerType.FX, out var fx))
                 return;
 
-            var affectedLayers = context.GetState<MMDRelayState>().mmdAffectedOriginalLayers;
-            var hasAnyOptInMmdLayerControl = false;
-            var layersWithMmdControl = new HashSet<VirtualLayer>();
+            var automaticallyAddedControls = context.GetState<MMDRelayState>().AutomaticallyAddedControls;
+            var layersWithMmdControl = new Dictionary<VirtualLayer, (int Index, bool DisableInMmdMode, bool AutomaticallyAdded)>();
 
-            foreach (var layer in fx.Layers)
+            foreach (var (layer, index) in fx.Layers.Select((layer, index) => (layer, index)))
             {
                 if (layer.StateMachine == null) continue;
                 
@@ -87,9 +99,6 @@ namespace nadena.dev.modular_avatar.animation
                     .ToList();
                 
                 if (rootMMDModeBehaviors.Count == 0) continue;
-
-                hasAnyOptInMmdLayerControl = rootMMDModeBehaviors.Any(b => b.DisableInMMDMode);
-                layersWithMmdControl.Add(layer);
                 
                 if (rootMMDModeBehaviors.Count > 1)
                 {
@@ -98,18 +107,17 @@ namespace nadena.dev.modular_avatar.animation
                     continue;
                 }
 
-                if (rootMMDModeBehaviors[0].DisableInMMDMode)
-                {
-                    affectedLayers.Add(layer);
-                }
-                else
-                {
-                    affectedLayers.Remove(layer);
-                }
+                var control = rootMMDModeBehaviors[0];
+
+                layersWithMmdControl.Add(layer, (
+                    index,
+                    control.DisableInMMDMode,
+                    automaticallyAddedControls.Contains(control)
+                ));
 
                 layer.StateMachine.Behaviours = layer.StateMachine.Behaviours
                     .Where(b => b is not ModularAvatarMMDLayerControl).ToImmutableList();
-                Object.DestroyImmediate(rootMMDModeBehaviors[0]);
+                Object.DestroyImmediate(control);
 
                 // check for child behaviors
                 // TODO: implement filtering on AllReachableNodes
@@ -135,10 +143,12 @@ namespace nadena.dev.modular_avatar.animation
             }
 
             // Check for WD OFF states in non-MMD layers when MMD Layer Control is being used
-            CheckForWriteDefaultsOn(fx, layersWithMmdControl, hasAnyOptInMmdLayerControl);
+            CheckForWriteDefaultsOn(fx, layersWithMmdControl.Values.Any(v =>
+                v.DisableInMmdMode && !v.AutomaticallyAdded));
 
-            var needsAdjustment = fx.Layers.Select((layer, index) => (layer, index))
-                .Any(pair => affectedLayers.Contains(pair.layer) != pair.index < 3);
+            var needsAdjustment = layersWithMmdControl.Count != 3 ||
+                                  layersWithMmdControl.Values.Any(v =>
+                                      v.Index >= 3 || v.DisableInMmdMode != (v.Index != 0));
             if (!needsAdjustment) return;
 
             fx.Parameters = fx.Parameters.Add(MMDRelayParam, new AnimatorControllerParameter
@@ -151,14 +161,21 @@ namespace nadena.dev.modular_avatar.animation
             var currentLayers = fx.Layers.ToList();
             var newLayers = new List<VirtualLayer>();
 
-            if (affectedLayers.Contains(currentLayers[0]) && !layersWithMmdControl.Contains(currentLayers[0]))
+            var originalLayerZero = layersWithMmdControl
+                .FirstOrDefault(pair =>
+                    pair.Value.Index == 0 &&
+                    !pair.Value.DisableInMmdMode &&
+                    pair.Value.AutomaticallyAdded)
+                .Key;
+
+            if (originalLayerZero != null)
             {
                 // Keep the original layer 0 as layer 0 since it should be affected by MMD shenanigans.
                 // Note that we don't do this with an explicit opt-in, as it appears that layer 0 still behaves a bit
                 // special compared to others, so if you opt-in you should get totally normal behavior.
-                newLayers.Add(currentLayers[0]);
-                affectedLayers.Remove(currentLayers[0]);
-                currentLayers.RemoveAt(0);
+                newLayers.Add(originalLayerZero);
+                currentLayers.Remove(originalLayerZero);
+                layersWithMmdControl.Remove(originalLayerZero);
             }
             else
             {
@@ -170,8 +187,9 @@ namespace nadena.dev.modular_avatar.animation
             // Add a dummy layer at layer 1 as well
             CreateDummyLayer(fx, newLayers);
 
-            var toDisable = fx.Layers.Where(l => affectedLayers.Contains(l))
-                .Select(l => l.VirtualLayerIndex)
+            var toDisable = layersWithMmdControl
+                .Where(pair => pair.Value.DisableInMmdMode)
+                .Select(pair => pair.Key.VirtualLayerIndex)
                 .ToList();
 
             // Add the control/sensor layer at layer 2.
@@ -189,8 +207,7 @@ namespace nadena.dev.modular_avatar.animation
             newLayers.Add(dummy);
         }
 
-        private static void CheckForWriteDefaultsOn(VirtualAnimatorController fx,
-            HashSet<VirtualLayer> layersWithMmdControl, bool hasAnyMmdControl)
+        private static void CheckForWriteDefaultsOn(VirtualAnimatorController fx, bool hasAnyMmdControl)
         {
             // Only check if MMD Layer Control is being used
             if (!hasAnyMmdControl) return;
